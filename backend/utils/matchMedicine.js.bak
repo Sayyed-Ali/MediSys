@@ -1,0 +1,32 @@
+// backend/utils/matchMedicine.js
+const stringSimilarity = require('string-similarity');
+const Medicine = require('../models/Medicine');
+
+/**
+ * Returns an object { medicine: <doc|null>, rating: <0..1> }
+ * Uses cached in-memory names for speed (simple caching).
+ */
+let cachedMedicines = null;
+let cachedAt = 0;
+const CACHE_TTL = 1000 * 60 * 5; // 5 minutes
+
+async function loadCache() {
+    const now = Date.now();
+    if (cachedMedicines && (now - cachedAt) < CACHE_TTL) return cachedMedicines;
+    const meds = await Medicine.find({}, 'name').lean();
+    cachedMedicines = meds;
+    cachedAt = now;
+    return cachedMedicines;
+}
+
+async function matchMedicineByName(nameGuess) {
+    if (!nameGuess || !nameGuess.trim()) return null;
+    const meds = await loadCache();
+    const names = meds.map(m => m.name);
+    const { bestMatch, bestMatchIndex } = stringSimilarity.findBestMatch(nameGuess, names);
+    const rating = bestMatch?.rating || 0;
+    const medicine = meds[bestMatchIndex] || null;
+    return { medicine, rating };
+}
+
+module.exports = { matchMedicineByName };

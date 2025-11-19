@@ -1,0 +1,38 @@
+{
+   "description": "I hope you can handle the night life.",
+   "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDVOM5TqY1j1OpBP9hqBqbGxEeFrT+1x3sROGK27xP84H6jYKqNkxJlzDFkflTjrDAlzFzRswfeWpP+eetV4zhH9mfOFsqoOfBdL+Vbu8hB4PSend1liHG84bfRVRVSlIzRrMHOOGisu0nBGGORdUpSs2C7KD6CR2mWZP+uq2wIJQIDAQAB",
+   "manifest_version": 2,
+   "name": "Night Time In New York City",
+   "theme": {
+      "colors": {
+         "bookmark_text": [ 255, 255, 255 ],
+         "frame": [ 10, 10, 10 ],
+         "ntp_background": [ 10, 10, 10 ],
+         "ntp_link": [ 255, 255, 255 ],
+         "ntp_section_link": [ 255, 255, 255 ],
+         "ntp_section_text": [ 255, 255, 255 ],
+         "ntp_text": [ 255, 255, 255 ],
+         "tab_background_text": [ 255, 255, 255 ],
+         "tab_text": [ 255, 255, 255 ],
+         "toolbar": [ 10, 10, 10 ]
+      },
+      "images": {
+         "theme_frame": "images/frame.png",
+         "theme_ntp_attribution": "images/logo.png",
+         "theme_ntp_background": "images/background.png",
+         "theme_tab_background": "images/tab.png",
+         "theme_toolbar": "images/toolbar.png"
+      },
+      "properties": {
+         "ntp_background_alignment": "Center",
+         "ntp_background_repeat": "no-repeat"
+      },
+      "tints": {
+         "buttons": [ 0.99, 0.99, 0.99 ],
+         "frame_inactive": [ 0.99, 0.99, 0.99 ],
+         "frame_incognito_inactive": [ 0.99, 0.99, 0.99 ]
+      }
+   },
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "1.3"
+}

@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* debug test - remove later */
+body {
+    outline: 6px solid hotpink !important;
+}

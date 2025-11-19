@@ -1,0 +1,106 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const path = require('path');
+require('dotenv').config();
+
+// The rest of the file stays the same, using path.join for other resources.
+const { listenForInventoryChanges } = require(path.join(__dirname, 'services', 'inventoryAlerts.js'));
+
+const app = express();
+const port = process.env.PORT;
+const uri = process.env.MONGO_URI;
+
+// --------------------------------------------------------------------------
+// CRITICAL CORS FIX START (FINAL ELEVATED POSITION)
+// --------------------------------------------------------------------------
+
+// 1. Manually set all CORS headers globally (Applied to all requests)
+app.use((req, res, next) => {
+    // FIX: Set Allow-Origin to a conditional list for local dev stability
+    const allowedLocalOrigins = ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000'];
+    const origin = req.headers.origin;
+
+    if (origin && allowedLocalOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+        res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173');
+    }
+
+    // Set other necessary headers
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-token');
+    res.setHeader('Access-Control-Allow-Credentials', true);
+
+    next();
+});
+
+// 2. FINAL CRITICAL FIX: Handle OPTIONS (Preflight) requests IMMEDIATELY after setting headers.
+// This is done before the routing or JSON parsing middleware.
+app.use((req, res, next) => {
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204); // Respond immediately with 204 No Content (Success)
+    }
+    next();
+});
+// --- CRITICAL CORS FIX END ---
+
+
+// CRITICAL: JSON middleware is applied correctly before routes
+app.use(express.json());
+
+// Import Routes
+const userRoutes = require('./routes/userRoutes.js');
+const authRoutes = require('./routes/authRoutes.js');
+const patientRoutes = require('./routes/patientRoutes.js');
+const doctorRoutes = require('./routes/doctorRoutes.js');
+const appointmentRoutes = require('./routes/appointmentRoutes.js');
+const medicineRoutes = require('./routes/medicineRoutes.js');
+const inventoryRoutes = require('./routes/inventoryRoutes.js');
+const bedRoutes = require('./routes/bedRoutes.js');
+const billingRoutes = require('./routes/billingRoutes.js');
+const analyticsRoutes = require('./routes/analyticsRoutes.js');
+const supplierRoutes = require('./routes/supplierRoutes.js');
+const donorRoutes = require('./routes/donorRoutes.js');
+const admissionRoutes = require('./routes/admissionRoutes.js');
+const invoiceRoutes = require('./routes/invoiceRoutes');
+
+// Use Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/patients', patientRoutes);
+app.use('/api/doctors', doctorRoutes);
+app.use('/api/appointments', appointmentRoutes);
+app.use('/api/medicines', medicineRoutes);
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/beds', bedRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/suppliers', supplierRoutes);
+app.use('/api/donors', donorRoutes);
+app.use('/api/admissions', admissionRoutes);
+app.use('/api/invoice', invoiceRoutes);
+
+// --- Connection Logic ---
+
+if (!uri) {
+    console.error("FATAL ERROR: MONGO_URI is undefined. Double-check your backend/.env file contents.");
+    process.exit(1);
+}
+
+mongoose.connect(uri)
+    .then(() => {
+        console.log('MongoDB connected successfully!');
+        // Start listening for real-time inventory change alerts
+        listenForInventoryChanges();
+
+        // Start the server
+        app.listen(port, () => {
+            console.log(`Server is running on port: ${port}`);
+        });
+
+    })
+    .catch(err => {
+        // CRITICAL DEBUG: Print the detailed connection error object
+        console.error('FATAL MongoDB connection error:', err);
+        process.exit(1);
+    });

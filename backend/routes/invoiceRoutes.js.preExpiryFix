@@ -1,0 +1,128 @@
+const express = require('express');
+const router = express.Router();
+const axios = require('axios');
+const FormData = require('form-data');
+const multer = require('multer');
+const { Types } = require('mongoose');
+
+const Inventory = require('../models/Inventory');
+const Medicine = require('../models/Medicine');
+const AuditLog = require('../models/AuditLog');
+const auth = require('../middleware/auth');
+const checkRole = require('../middleware/checkRole');
+const { matchMedicineByName } = require('../utils/matchMedicine');
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+const INVOICE_SERVICE_URL = process.env.INVOICE_SERVICE_URL || 'http://127.0.0.1:5001/api/invoice/parse';
+const AUTO_MATCH_THRESHOLD = 0.80;
+const REVIEW_THRESHOLD = 0.60;
+
+router.post('/upload', auth, checkRole(['Admin']), upload.single('invoice'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ msg: 'No invoice PDF uploaded (field name: invoice).' });
+
+    const form = new FormData();
+    form.append('file', req.file.buffer, {
+      filename: req.file.originalname || 'invoice.pdf',
+      contentType: req.file.mimetype || 'application/pdf',
+    });
+
+    // DIAGNOSTIC LOGS
+    console.log('[invoiceRoutes] Posting to:', INVOICE_SERVICE_URL);
+    try {
+      const headers = form.getHeaders();
+      console.log('[invoiceRoutes] Form headers keys:', Object.keys(headers));
+    } catch (e) {
+      console.error('[invoiceRoutes] Error getting form headers:', e && e.message ? e.message : e);
+    }
+
+    // Make the request but accept non-200 so we can inspect body
+    const invoiceResp = await axios.post(INVOICE_SERVICE_URL, form, {
+      headers: { ...form.getHeaders() },
+      validateStatus: () => true,
+      timeout: 600000,
+    });
+
+    console.log('[invoiceRoutes] Invoice service status:', invoiceResp.status);
+    if (invoiceResp.status !== 200) {
+      console.error('[invoiceRoutes] Invoice service error body:', invoiceResp.data);
+      return res.status(500).json({ error: `Invoice service ${invoiceResp.status}`, details: invoiceResp.data });
+    }
+
+    if (!invoiceResp.data || !Array.isArray(invoiceResp.data.rows)) {
+      console.error('[invoiceRoutes] Unexpected response shape:', invoiceResp.data);
+      return res.status(500).json({ msg: 'Invoice service returned unexpected response', raw: invoiceResp.data });
+    }
+
+    const rows = invoiceResp.data.rows;
+    const autoAdded = [];
+    const needsReview = [];
+
+    const supplierId = req.body.supplierId ? new Types.ObjectId(req.body.supplierId) : null;
+
+    for (const r of rows) {
+      const desc = (r.description || '').trim();
+      const qty = Number(r.quantity || 0);
+      const batch = r.batch || null;
+      const expiryRaw = r.expiry || null;
+
+      if (!desc || !qty || qty <= 0) {
+        needsReview.push({ row: r, reason: 'missing description or non-positive quantity' });
+        continue;
+      }
+
+      const match = await matchMedicineByName(desc);
+      const rating = match?.rating ?? 0;
+      const matchedMedicine = match?.medicine ?? null;
+
+      if (rating >= AUTO_MATCH_THRESHOLD && matchedMedicine) {
+        const inv = new Inventory({
+          medicine: matchedMedicine._id,
+          batchNumber: batch || 'UNKNOWN',
+          expiryDate: expiryRaw ? new Date(expiryRaw) : null,
+          quantity: qty,
+          supplier: supplierId,
+        });
+        await inv.save();
+        autoAdded.push({ row: r, inventoryId: inv._id, medicine: matchedMedicine.name, rating });
+      } else if (rating >= REVIEW_THRESHOLD && matchedMedicine) {
+        needsReview.push({ row: r, candidateMatches: [{ medicine: matchedMedicine, rating }], rating });
+      } else {
+        needsReview.push({ row: r, candidateMatches: match ? [{ medicine: match.medicine, rating: match.rating }] : [], rating });
+      }
+    }
+
+    const audit = new AuditLog({
+      action: 'invoice_import',
+      user: req.user?.id || null,
+      summary: {
+        fileName: req.file.originalname,
+        autoAddedCount: autoAdded.length,
+        needsReviewCount: needsReview.length,
+      },
+      rawRowsCount: rows.length,
+      rawResponse: invoiceResp.data,
+    });
+    await audit.save();
+
+    return res.status(200).json({ msg: 'Invoice processed', autoAdded, needsReview, auditId: audit._id });
+  } catch (err) {
+    // Rich diagnostic: print the error object and stack
+    console.error('Invoice upload error:', (err && err.message) ? err.message : err);
+    try {
+      console.error('Full error object:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
+    } catch (e) {
+      console.error('Could not JSON.stringify(err):', e && e.message ? e.message : e);
+      console.error('Err stack:', err && err.stack ? err.stack : err);
+    }
+    if (err.response) {
+      console.error('Invoice service response (status):', err.response.status);
+      console.error('Invoice service response (data):', err.response.data);
+      console.error('Invoice service response (headers):', err.response.headers);
+    }
+    return res.status(500).json({ error: err.message || 'Server error while processing invoice.' });
+  }
+});
+
+module.exports = router;

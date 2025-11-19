@@ -1,0 +1,127 @@
+// backend/routes/invoiceRoutes.js
+const express = require('express');
+const router = express.Router();
+const axios = require('axios');
+const FormData = require('form-data');
+const multer = require('multer');
+const { Types } = require('mongoose');
+
+const Inventory = require('../models/Inventory');
+const Medicine = require('../models/Medicine');
+const AuditLog = require('../models/AuditLog');
+const auth = require('../middleware/auth');
+const checkRole = require('../middleware/checkRole');
+const { matchMedicineByName } = require('../utils/matchMedicine');
+
+// memory storage for multer
+const upload = multer({ storage: multer.memoryStorage() });
+
+// Config: URL of invoice parsing service (Flask)
+const INVOICE_SERVICE_URL = process.env.INVOICE_SERVICE_URL || 'http://localhost:5001/api/invoice/parse';
+
+// Confidence thresholds
+const AUTO_MATCH_THRESHOLD = 0.80;
+const REVIEW_THRESHOLD = 0.60;
+
+// POST /api/invoice/upload
+// Accepts a PDF file (multipart/form-data field name: invoice)
+// Protected: Admin only (change roles as needed)
+router.post('/upload', auth, checkRole(['Admin']), upload.single('invoice'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ msg: 'No invoice PDF uploaded (field name: invoice).' });
+
+        // Forward PDF to invoice parsing microservice
+        const form = new FormData();
+        form.append('file', req.file.buffer, {
+            filename: req.file.originalname || 'invoice.pdf',
+            contentType: req.file.mimetype || 'application/pdf',
+        });
+
+        const invoiceResp = await axios.post(INVOICE_SERVICE_URL, form, {
+            headers: {
+                ...form.getHeaders(),
+            },
+            timeout: 600000, // allow longer processing time for large PDFs
+        });
+
+        if (!invoiceResp.data || !Array.isArray(invoiceResp.data.rows)) {
+            return res.status(500).json({ msg: 'Invoice service returned unexpected response', raw: invoiceResp.data });
+        }
+
+        const rows = invoiceResp.data.rows; // each row: { description, batch, expiry, quantity, price, raw }
+        const autoAdded = [];
+        const needsReview = [];
+
+        // Optional: determine supplier id from request or parsed data
+        const supplierId = req.body.supplierId ? new Types.ObjectId(req.body.supplierId) : null;
+
+        for (const r of rows) {
+            const desc = (r.description || '').trim();
+            const qty = Number(r.quantity || 0);
+            const batch = r.batch || null;
+            const expiryRaw = r.expiry || null;
+            const price = r.price ? Number(r.price) : null;
+
+            // Skip empty lines
+            if (!desc || !qty || qty <= 0) {
+                // push for review if there's anything suspicious
+                needsReview.push({ row: r, reason: 'missing description or non-positive quantity' });
+                continue;
+            }
+
+            // Try to match medicine
+            const match = await matchMedicineByName(desc);
+            const rating = match?.rating ?? 0;
+            const matchedMedicine = match?.medicine ?? null;
+
+            if (rating >= AUTO_MATCH_THRESHOLD && matchedMedicine) {
+                // Auto-create Inventory entry
+                const inv = new Inventory({
+                    medicine: matchedMedicine._id,
+                    batchNumber: batch || 'UNKNOWN',
+                    expiryDate: expiryRaw ? new Date(expiryRaw) : null,
+                    quantity: qty,
+                    supplier: supplierId,
+                });
+                await inv.save();
+                autoAdded.push({ row: r, inventoryId: inv._id, medicine: matchedMedicine.name, rating });
+            } else if (rating >= REVIEW_THRESHOLD && matchedMedicine) {
+                // Put for manual confirmation in frontend
+                needsReview.push({ row: r, candidateMatches: [{ medicine: matchedMedicine, rating }], rating });
+            } else {
+                // No plausible match
+                needsReview.push({ row: r, candidateMatches: match ? [{ medicine: match.medicine, rating: match.rating }] : [], rating });
+            }
+        }
+
+        // Create an audit log entry
+        const audit = new AuditLog({
+            action: 'invoice_import',
+            user: req.user?.id || null,
+            summary: {
+                fileName: req.file.originalname,
+                autoAddedCount: autoAdded.length,
+                needsReviewCount: needsReview.length,
+            },
+            rawRowsCount: rows.length,
+            rawResponse: invoiceResp.data,
+        });
+        await audit.save();
+
+        res.status(200).json({
+            msg: 'Invoice processed',
+            autoAdded,
+            needsReview,
+            auditId: audit._id,
+        });
+
+    } catch (err) {
+        console.error('Invoice upload error:', err?.message || err);
+        if (err.response) {
+            console.error('Invoice service response:', err.response.data);
+        }
+        res.status(500).json({ error: err.message || 'Server error while processing invoice.' });
+    }
+});
+
+module.exports = router;

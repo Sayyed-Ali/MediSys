@@ -1,0 +1,14 @@
+/node_modules
+/backend/node_modules
+/frontend/medisys-frontend/node_modules
+
+# Build and Cache
+/frontend/medisys-frontend/dist
+/frontend/medisys-frontend/.vite
+
+# Environment Variables (CRITICAL: Do not expose your MongoDB password)
+/backend/.env
+
+# Python Environment
+/venv
+__pycache__

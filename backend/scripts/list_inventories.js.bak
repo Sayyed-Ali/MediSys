@@ -1,0 +1,33 @@
+/**
+ * backend/scripts/list_inventories.js
+ * Lists recent Inventory entries (populates medicine).
+ */
+const mongoose = require('mongoose');
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+const Inventory = require('../models/Inventory');
+
+async function run() {
+  try {
+    await mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+    const list = await Inventory.find().sort({ createdAt: -1 }).limit(50).populate('medicine').lean();
+    list.forEach(i => {
+      console.log({
+        id: i._id.toString(),
+        medicine: i.medicine ? i.medicine.name : i.medicine,
+        batch: i.batchNumber,
+        expiry: i.expiryDate ? new Date(i.expiryDate).toISOString().split('T')[0] : null,
+        qty: i.quantity,
+        supplier: i.supplier ? i.supplier.toString() : null,
+        createdAt: i.createdAt
+      });
+    });
+    console.log('Total listed:', list.length);
+  } catch (err) {
+    console.error('Error listing inventories:', err);
+  } finally {
+    await mongoose.disconnect();
+    process.exit(0);
+  }
+}
+
+run();

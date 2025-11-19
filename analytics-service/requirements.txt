@@ -1,0 +1,5 @@
+flask
+flask-cors
+camelot-py[cv]   # camelot with OpenCV backend
+pandas
+numpy
