@@ -14,6 +14,14 @@ import csv
 from datetime import datetime
 import shutil
 
+# Attempt to import invoice_service (may be a module with Blueprint / register function / handler)
+try:
+    import invoice_service
+    invoice_import_error = None
+except Exception as e:
+    invoice_service = None
+    invoice_import_error = e
+
 app = Flask(__name__)
 CORS(app)
 
@@ -25,7 +33,9 @@ def parse_month_to_index(month_input, months_index_map):
         return None
     try:
         if isinstance(month_input, int):
-            last_month = max(months_index_map.keys())
+            last_month = max(months_index_map.keys()) if months_index_map else None
+            if not last_month:
+                return None
             y = int(last_month.split('-')[0])
             m = int(month_input)
             key = f"{y:04d}-{m:02d}"
@@ -173,6 +183,66 @@ print("Analytics service: models trained/loaded.")
 print("Medicines:", medicine_catalog)
 print("Diseases:", disease_catalog)
 print("Months:", len(months_list))
+
+# -------------------------
+# Try to register invoice_service routes if available
+# -------------------------
+def register_invoice_routes_if_possible(app):
+    if invoice_service is None:
+        print("[analytics] invoice_service not imported:", getattr(invoice_import_error, 'args', invoice_import_error))
+        print("[analytics] To enable invoice parsing endpoints, ensure analytics-service/invoice_service.py exists and exports a blueprint or a register function.")
+        return
+
+    # 1) If invoice_service has a Blueprint object under common names, register it
+    blueprint_names = ('invoice_bp', 'invoice_blueprint', 'bp', 'blueprint')
+    for name in blueprint_names:
+        if hasattr(invoice_service, name):
+            bp = getattr(invoice_service, name)
+            try:
+                app.register_blueprint(bp)
+                print(f"[analytics] Registered invoice blueprint from invoice_service ({name}).")
+                return
+            except Exception as e:
+                print(f"[analytics] Failed to register blueprint '{name}':", e)
+
+    # 2) If invoice_service exposes a register function, call it
+    register_funcs = ('register_routes', 'register_invoice_routes', 'init_routes')
+    for fn in register_funcs:
+        if hasattr(invoice_service, fn) and callable(getattr(invoice_service, fn)):
+            try:
+                getattr(invoice_service, fn)(app)
+                print(f"[analytics] Called invoice_service.{fn}(app) to register invoice routes.")
+                return
+            except Exception as e:
+                print(f"[analytics] invoice_service.{fn} raised an exception:", e)
+
+    # 3) If invoice_service exposes a parse handler function, wrap it
+    if hasattr(invoice_service, 'parse_invoice') and callable(invoice_service.parse_invoice):
+        try:
+            @app.route('/api/invoice/parse', methods=['POST'])
+            def _invoice_parse_wrapper():
+                # The invoice_service.parse_invoice may expect flask.request inside its module.
+                # Try to call it and return its result.
+                try:
+                    return invoice_service.parse_invoice()
+                except Exception as ie:
+                    traceback.print_exc()
+                    return jsonify({'error': 'invoice_service.parse_invoice failed', 'detail': str(ie)}), 500
+            print("[analytics] Exposed invoice_service.parse_invoice via /api/invoice/parse wrapper.")
+            return
+        except Exception as e:
+            print("[analytics] Failed to wrap parse_invoice:", e)
+
+    # 4) Not found — warn developer
+    print("[analytics] invoice_service imported but no usable registration found.")
+    print("[analytics] Expected one of:")
+    print("  - a Blueprint named invoice_bp / invoice_blueprint / bp / blueprint (preferred).")
+    print("  - a function register_routes(app) or register_invoice_routes(app) or init_routes(app).")
+    print("  - a callable parse_invoice() that handles the request (fallback wrapper created if present).")
+    print("[analytics] Please update analytics-service/invoice_service.py to export one of the above so app.py can register invoice endpoints automatically.")
+
+# attempt registration now
+register_invoice_routes_if_possible(app)
 
 # -------------------------
 # Existing predict endpoints (unchanged)
