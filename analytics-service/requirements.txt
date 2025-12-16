@@ -3,3 +3,6 @@ flask-cors
 camelot-py[cv]   # camelot with OpenCV backend
 pandas
 numpy
+scikit-learn
+joblib
+python-dateutil
