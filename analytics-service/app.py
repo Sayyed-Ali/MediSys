@@ -23,7 +23,26 @@ except Exception as e:
     invoice_import_error = e
 
 app = Flask(__name__)
-CORS(app)
+
+# CORS Configuration - Allow requests from Backend and Frontend
+allowed_origins = [
+    'https://medisys-backend-lzk3.onrender.com',
+    'https://medisys-frontend.onrender.com',
+    'http://localhost:5000',
+    'http://localhost:4000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5000',
+    'http://127.0.0.1:4000',
+    'http://127.0.0.1:5173',
+]
+
+# Get from environment if available
+backend_url = os.getenv('BACKEND_URL')
+if backend_url and backend_url not in allowed_origins:
+    allowed_origins.append(backend_url)
+
+CORS(app, origins=allowed_origins, supports_credentials=True)
+
 
 # -------------------------
 # Helper utilities (you already had parse_month_to_index etc.)

@@ -41,26 +41,39 @@ process.on('uncaughtException', (err) => {
 // CORS + preflight handling (kept your allowed origins and final elevated position)
 // --------------------------------------------------------------------------
 app.use((req, res, next) => {
-    const allowedLocalOrigins = [
+    const allowedOrigins = [
+        // Production
+        'https://medisys-frontend.onrender.com',
+        'https://medisys-backend-lzk3.onrender.com',
+        'https://medisys-ando.onrender.com',
+        // Local development
         'http://localhost:5173',
         'http://127.0.0.1:5173',
         'http://localhost:3000',
         'http://127.0.0.1:3000',
         'http://localhost:5001',
         'http://127.0.0.1:5001',
-        // add other local dev hosts you use
+        'http://localhost:4000',
+        'http://127.0.0.1:4000',
     ];
+
     const origin = req.headers.origin;
-    if (origin && allowedLocalOrigins.includes(origin)) {
+
+    if (origin && allowedOrigins.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
     } else {
-        // dev fallback — adjust to your frontend origin if necessary
-        res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5001');
+        // Fallback for production - allow your frontend
+        res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'https://medisys-frontend.onrender.com');
     }
+
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-token');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
+
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+    }
+
     next();
 });
 
