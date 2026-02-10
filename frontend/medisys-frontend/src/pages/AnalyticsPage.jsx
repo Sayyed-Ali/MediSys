@@ -33,7 +33,13 @@ export default function AnalyticsPage() {
 
     useEffect(() => {
         // load metadata (months, medicines, diseases)
-        fetch(`${API_BASE}/api/analytics/metadata`)
+        const token = localStorage.getItem('token');
+        fetch(`${API_BASE}/api/analytics/metadata`, {
+            headers: {
+                'Content-Type': 'application/json',
+                'x-auth-token': token || ''
+            }
+        })
             .then((r) => r.json())
             .then((data) => {
                 if (data && data.months && data.months.length) {
@@ -48,15 +54,21 @@ export default function AnalyticsPage() {
         if (!month) return;
         setLoading(true);
         try {
+            const token = localStorage.getItem('token');
+            const headers = {
+                'Content-Type': 'application/json',
+                'x-auth-token': token || ''
+            };
+
             const [dRes, disRes] = await Promise.all([
                 fetch(`${API_BASE}/api/predict/demand`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers,
                     body: JSON.stringify({ month }),
                 }).then((r) => r.json()),
                 fetch(`${API_BASE}/api/predict/disease`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers,
                     body: JSON.stringify({ month }),
                 }).then((r) => r.json()),
             ]);
@@ -77,9 +89,13 @@ export default function AnalyticsPage() {
     async function handlePredictRisk() {
         setRiskResult(null);
         try {
+            const token = localStorage.getItem('token');
             const res = await fetch(`${API_BASE}/api/predict/risk`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-auth-token': token || ''
+                },
                 body: JSON.stringify({
                     age: Number(riskInput.age),
                     isSmoker: Boolean(riskInput.isSmoker),
