@@ -13,7 +13,7 @@ import {
     Line,
 } from "recharts";
 
-const ANALYTICS_BASE = import.meta.env.VITE_ANALYTICS_BASE || "http://127.0.0.1:5001";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
 export default function AnalyticsPage() {
     const [months, setMonths] = useState([]);
@@ -33,7 +33,7 @@ export default function AnalyticsPage() {
 
     useEffect(() => {
         // load metadata (months, medicines, diseases)
-        fetch(`${ANALYTICS_BASE}/api/analytics/metadata`)
+        fetch(`${API_BASE}/api/analytics/metadata`)
             .then((r) => r.json())
             .then((data) => {
                 if (data && data.months && data.months.length) {
@@ -49,12 +49,12 @@ export default function AnalyticsPage() {
         setLoading(true);
         try {
             const [dRes, disRes] = await Promise.all([
-                fetch(`${ANALYTICS_BASE}/api/predict/demand`, {
+                fetch(`${API_BASE}/api/predict/demand`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ month }),
                 }).then((r) => r.json()),
-                fetch(`${ANALYTICS_BASE}/api/predict/disease`, {
+                fetch(`${API_BASE}/api/predict/disease`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ month }),
@@ -77,7 +77,7 @@ export default function AnalyticsPage() {
     async function handlePredictRisk() {
         setRiskResult(null);
         try {
-            const res = await fetch(`${ANALYTICS_BASE}/api/predict/risk`, {
+            const res = await fetch(`${API_BASE}/api/predict/risk`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

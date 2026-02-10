@@ -1,9 +1,13 @@
 import axios from 'axios';
 import { jwtDecode } from 'jwt-decode';
 
+// Use environment variable for backend URL
+// In production: VITE_API_BASE = https://medisys-backend-lzk3.onrender.com
+// In development: defaults to http://localhost:5000
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
+
 const API = axios.create({
-    // CRITICAL FIX: Base URL must be relative ('/api') to force Vite proxy to handle the request.
-    baseURL: '/api',
+    baseURL: `${API_BASE}/api`,
 });
 
 export const setAuthToken = token => {
